@@ -1,5 +1,5 @@
 import winston from 'winston';
-import DailyRotateFile from 'winston-daily-rotate-file';
+// import DailyRotateFile from 'winston-daily-rotate-file'; // Deshabilitado - logs solo a stdout en producción
 import morgan from 'morgan';
 import config from '../config/index.js';
 
@@ -38,7 +38,10 @@ transports.push(
   })
 );
 
-// File transport con rotación diaria (solo en producción)
+// File transport con rotación diaria (DESHABILITADO en producción - usar logs de Docker/Coolify)
+// En Docker/Kubernetes/Coolify, los logs se capturan desde stdout/stderr
+// Si necesitas logs a archivo, habilita esto y configura un volumen persistente con permisos correctos
+/*
 if (config.nodeEnv === 'production') {
   transports.push(
     new DailyRotateFile({
@@ -62,6 +65,7 @@ if (config.nodeEnv === 'production') {
     })
   );
 }
+*/
 
 // Crear logger
 export const logger = winston.createLogger({
