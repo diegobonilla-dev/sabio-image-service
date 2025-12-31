@@ -70,12 +70,7 @@ app.use(httpLogger);
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Static files - Uploads (servir archivos optimizados)
-// Si uploadDir es absoluto, usarlo directamente; si es relativo, hacer join
-const uploadsPath = path.isAbsolute(config.uploadDir)
-  ? config.uploadDir
-  : path.join(__dirname, '..', config.uploadDir);
-
-app.use('/uploads', express.static(uploadsPath, {
+app.use('/uploads', express.static(path.join(__dirname, '..', config.uploadDir), {
   maxAge: '1y', // Cache por 1 año
   immutable: true,
   setHeaders: (res, filepath) => {

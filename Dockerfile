@@ -28,11 +28,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Instalar dumb-init (para manejo correcto de señales), vips runtime y su-exec
+# Instalar dumb-init (para manejo correcto de señales) y vips runtime
 RUN apk add --no-cache \
     dumb-init \
-    vips \
-    su-exec
+    vips
 
 # Copiar node_modules desde builder
 COPY --from=builder /app/node_modules ./node_modules
@@ -42,13 +41,12 @@ COPY src ./src
 COPY public ./public
 COPY package*.json ./
 
-# Copiar script de entrypoint
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
 # Crear directorios con permisos correctos
 RUN mkdir -p uploads logs && \
     chown -R node:node /app
+
+# Usar usuario no-root por seguridad
+USER node
 
 # Exponer puerto
 EXPOSE 3000
@@ -57,9 +55,8 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/health', (res) => { res.on('data', () => {}); process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1))"
 
-# Usar dumb-init con entrypoint personalizado
-# El entrypoint se ejecuta como root, arregla permisos, y luego cambia a usuario node
-ENTRYPOINT ["dumb-init", "--", "docker-entrypoint.sh"]
+# Usar dumb-init para manejo de señales
+ENTRYPOINT ["dumb-init", "--"]
 
-# Comando de inicio (se ejecuta como usuario node via su-exec en el entrypoint)
+# Comando de inicio
 CMD ["node", "src/server.js"]
