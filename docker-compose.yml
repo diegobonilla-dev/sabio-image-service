@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  image-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sabio-image-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      PUBLIC_URL: http://localhost:3002
+      API_KEY: local-dev-key-change-in-production
+      MAX_FILE_SIZE: 10485760
+      ALLOWED_MIME_TYPES: image/jpeg,image/png,image/webp,image/gif
+      DEFAULT_QUALITY: 80
+      UPLOAD_DIR: ./uploads
+      JWT_SECRET: local-jwt-secret
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:4000
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      LOG_LEVEL: debug
+    volumes:
+      # Persistencia de uploads y logs
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      # Hot reload en desarrollo (comentar en producción)
+      - ./src:/app/src
+    networks:
+      - sabio-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (res) => { res.on('data', () => {}); process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+networks:
+  sabio-network:
+    driver: bridge
+    # Para conectar con otros servicios locales (backend, frontend)
+    # Usar: docker network connect sabio-network nombre-contenedor-backend

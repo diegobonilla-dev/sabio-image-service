@@ -1,0 +1,42 @@
+# Node
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Uploads y Logs (se montan como volúmenes)
+uploads/*
+logs/*
+*.log
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+coverage
+.nyc_output
+
+# Docs
+README.md
+PLAN_IMAGE_SERVICE.md
+*.md
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
