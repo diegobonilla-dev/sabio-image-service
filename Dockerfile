@@ -1,37 +1,30 @@
 # ================================
 # Stage 1: Build dependencies
 # ================================
-# Build: 2025-12-31
-FROM node:20-alpine AS builder
+# Build: 2025-12-31 - Migrated to Debian Slim for reliability
+FROM node:20-slim AS builder
 
 WORKDIR /app
-
-# Instalar dependencias de compilación para Sharp
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    gcc \
-    libc-dev \
-    vips-dev
 
 # Copiar package files
 COPY package*.json ./
 
-# Instalar SOLO dependencias de producción
+# Instalar dependencias de producción (Sharp usará binarios precompilados)
 RUN npm install --only=production
 
 # ================================
 # Stage 2: Production image
 # ================================
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Instalar dumb-init (para manejo correcto de señales) y vips runtime
-RUN apk add --no-cache \
+# Instalar dumb-init y libvips runtime (sin compilar)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     dumb-init \
-    vips
+    libvips42 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copiar node_modules desde builder
 COPY --from=builder /app/node_modules ./node_modules
