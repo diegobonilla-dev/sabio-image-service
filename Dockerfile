@@ -19,7 +19,7 @@ RUN apk add --no-cache \
 COPY package*.json ./
 
 # Instalar SOLO dependencias de producción
-RUN npm ci --only=production --omit=dev
+RUN npm install --only=production
 
 # ================================
 # Stage 2: Production image
