@@ -1,8 +1,8 @@
 # 📦 RESUMEN DE DEPLOYMENT - SaBio Image Service
 
 **Fecha**: 2025-12-31
-**Estado**: Build exitoso, Healthcheck FAILING
-**Próximo paso**: Fix variable de entorno `DEFAULT_QUALITY`
+**Estado**: ✅ SERVICIO FUNCIONANDO - Healthcheck OK, Upload OK
+**Próximo paso**: Arreglar servido de archivos estáticos (las imágenes subidas no se sirven por error de path)
 
 ---
 
@@ -13,28 +13,40 @@
 - [x] Servicio creado en Coolify (dentro del proyecto SaBio CRM)
 - [x] Variables de entorno configuradas
 - [x] Volúmenes persistentes configurados
-- [x] Dockerfile modificado (`npm install` en lugar de `npm ci`)
+- [x] Dockerfile optimizado (`npm install` en lugar de `npm ci`)
 - [x] Build de Docker completado exitosamente
-- [x] Contenedor arrancado
+- [x] Contenedor arrancado y HEALTHY
+- [x] **Logger modificado**: Sin logs a archivo en producción (solo stdout)
+- [x] **Upload de imágenes FUNCIONA**: Procesa, optimiza y guarda correctamente
 
-### ❌ Problema Actual
-**HEALTHCHECK FAILING** - Contenedor "unhealthy"
+### ⚠️ Problema Actual
+**Archivos subidos NO se sirven correctamente** - HTTP 404
 
-**Causa identificada**: Variable de entorno malformada:
-```
-DEFAULT_QUALITY==80  ← ¡DOBLE IGUAL!
+**Causa**: En `src/server.js` línea 73, cuando `UPLOAD_DIR` es ruta absoluta (`/app/uploads`),
+el código hace `path.join(__dirname, '..', config.uploadDir)` resultando en path incorrecto.
+
+**Ejemplo del problema**:
+- Imagen subida: `http://fowokk8sockwkso4swcso0w4.31.97.215.37.sslip.io/uploads/general/2025/12/1767198551626-Tg_-dO.webp`
+- Retorna: 404 Not Found
+- Archivo SÍ existe en: `/app/uploads/general/2025/12/1767198551626-Tg_-dO.webp`
+
+### 📋 Próximo Paso Crítico
+**Arreglar el servido de archivos estáticos** aplicando el fix de path que detectamos:
+
+```javascript
+// En src/server.js línea 72-73
+// ANTES (incorrecto):
+app.use('/uploads', express.static(path.join(__dirname, '..', config.uploadDir), {
+
+// DESPUÉS (correcto):
+const uploadsPath = path.isAbsolute(config.uploadDir)
+  ? config.uploadDir
+  : path.join(__dirname, '..', config.uploadDir);
+
+app.use('/uploads', express.static(uploadsPath, {
 ```
 
-Debería ser:
-```
-DEFAULT_QUALITY=80   ← UN SOLO IGUAL
-```
-
-### 📋 Pendiente
-- [ ] Fix variable `DEFAULT_QUALITY` en Coolify UI
-- [ ] Redeploy y verificar healthcheck pase
-- [ ] Probar upload de imagen en producción
-- [ ] Integrar con backend en producción
+**NOTA IMPORTANTE**: Intentamos aplicar este fix pero el build falló por **corrupción temporal de repositorios Alpine** (I/O errors en gcc y py3-imath). NO fue culpa del código. Revertimos al último commit funcional (`f768118`).
 
 ---
 
@@ -116,21 +128,24 @@ npm error The npm ci command can only install with an existing package-lock.json
 
 **Solución final**: Cambiar a `npm install --only=production`
 
-### Error 2: Healthcheck unhealthy (ACTUAL)
-**Logs**:
-```
-✅ Building docker image completed.
-✅ Container fowokk8sockwkso4swcso0w4-160208948011 Started
-❌ Healthcheck status: "unhealthy"
-```
+### Error 2: Healthcheck unhealthy
+**Causa**: Logs a archivo en producción causaban crash por permisos
 
-**Causa**: Variable `DEFAULT_QUALITY==80` con doble `=`
+**Solución**: Deshabilitar logs a archivo, solo usar stdout (✅ RESUELTO)
 
-**Solución**: Ver sección siguiente
+### Error 3: Upload falla por permisos
+**Causa**: Directorio `/app/uploads` no tenía permisos de escritura
+
+**Solución**: Intentamos script de entrypoint pero Alpine repos tenían corrupción temporal. Revertido. (⏸️ PENDIENTE)
+
+### Error 4: Imágenes subidas retornan 404
+**Causa**: `express.static` con path absoluto mal calculado en `server.js:73`
+
+**Solución**: Aplicar fix de `path.isAbsolute()` (⏸️ PENDIENTE por Alpine repos)
 
 ---
 
-## 🚀 PRÓXIMOS PASOS (PASO A PASO)
+## 🚀 PRÓXIMO PASO CRÍTICO
 
 ### PASO 1: Fix variable de entorno
 1. Ir a Coolify → Tu proyecto SaBio CRM

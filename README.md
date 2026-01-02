@@ -668,8 +668,8 @@ MIT © SaBio Team
 ## 📞 Soporte
 
 - Documentación: Este README
-- Issues: https://github.com/tuusuario/sabio-crm-fs/issues
-- Email: support@tudominio.com
+- Issues: https://github.com/diegobonilla-dev/sabio-image-service/issues
+- Email: diego.bonilla@sabio.com.co
 
 ---
 
