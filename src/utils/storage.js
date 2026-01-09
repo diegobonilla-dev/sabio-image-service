@@ -1,7 +1,14 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { existsSync } from 'fs';
+import sharp from 'sharp';
 import config from '../config/index.js';
+
+/**
+ * Configuración de Sharp para evitar bloqueo de archivos
+ * Deshabilitar caché de archivos para permitir eliminación inmediata
+ */
+sharp.cache({ files: 0 });
 
 /**
  * Utilidades para gestión de filesystem
@@ -40,20 +47,51 @@ export const saveFile = async (buffer, filePath) => {
 };
 
 /**
- * Elimina archivo del disco
+ * Elimina archivo del disco con reintentos para manejar EBUSY/EPERM
+ * Este error ocurre cuando Sharp u otro proceso está leyendo el archivo
  * @param {string} filePath - Path del archivo a eliminar
+ * @param {number} maxRetries - Número máximo de reintentos
  * @returns {Promise<boolean>} true si se eliminó, false si no existía
  */
-export const deleteFile = async (filePath) => {
-  try {
-    if (existsSync(filePath)) {
-      await fs.unlink(filePath);
-      return true;
-    }
+export const deleteFile = async (filePath, maxRetries = 5) => {
+  if (!existsSync(filePath)) {
     return false;
-  } catch (err) {
-    throw new Error(`Error al eliminar archivo ${filePath}: ${err.message}`);
   }
+
+  // Forzar limpieza de Sharp antes de eliminar para liberar cualquier archivo abierto
+  sharp.cache(false);
+  if (global.gc) {
+    global.gc(); // Forzar garbage collection si está disponible
+  }
+
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await fs.unlink(filePath);
+      // Restaurar caché de Sharp después de eliminación exitosa
+      sharp.cache({ files: 0 });
+      return true;
+    } catch (err) {
+      lastError = err;
+      // Si es EBUSY/EPERM (archivo en uso), esperar y reintentar
+      if ((err.code === 'EBUSY' || err.code === 'EPERM') && attempt < maxRetries - 1) {
+        // Delay exponencial: 200ms, 400ms, 600ms, 800ms, 1000ms
+        await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+        // Forzar limpieza nuevamente antes del siguiente intento
+        sharp.cache(false);
+        if (global.gc) {
+          global.gc();
+        }
+        continue;
+      }
+      // Si no es EBUSY/EPERM o ya agotamos los reintentos, lanzar el error
+      break;
+    }
+  }
+
+  // Restaurar caché incluso si falló
+  sharp.cache({ files: 0 });
+  throw new Error(`Error al eliminar archivo ${filePath}: ${lastError.message}`);
 };
 
 /**
@@ -148,13 +186,35 @@ const collectImages = async (dir, baseDir, images) => {
       const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
       const parts = relativePath.split('/');
 
+      // Obtener dimensiones reales con Sharp
+      let dimensions = { width: 0, height: 0 };
+      try {
+        // Crear instancia de Sharp con opciones que evitan bloquear el archivo
+        const sharpInstance = sharp(fullPath, {
+          sequentialRead: true, // Lectura secuencial para liberar recursos más rápido
+          failOnError: false,
+        });
+
+        const metadata = await sharpInstance.metadata();
+        dimensions = {
+          width: metadata.width || 0,
+          height: metadata.height || 0,
+        };
+
+        // Destruir la instancia explícitamente para liberar el archivo
+        sharpInstance.destroy();
+      } catch (err) {
+        // Si falla, mantener dimensiones en 0
+        console.error(`Error obteniendo dimensiones de ${relativePath}:`, err.message);
+      }
+
       images.push({
         filename: entry.name,
         relativePath,
         folder: parts[0] || 'general',
         size: stats.size,
         createdAt: stats.birthtime,
-        dimensions: { width: 0, height: 0 }, // Se puede obtener con Sharp si es necesario
+        dimensions,
       });
     }
   }
@@ -171,11 +231,9 @@ export const getStats = async () => {
     if (!existsSync(uploadDir)) {
       return {
         totalImages: 0,
-        totalSize: '0 B',
-        totalSizeBytes: 0,
-        byFolder: {},
+        totalSize: 0,
+        folders: {},
         thisMonth: 0,
-        diskUsage: { used: '0 B', available: 'N/A', percentage: 0 },
       };
     }
 
@@ -192,12 +250,21 @@ export const getStats = async () => {
 
     // Total de tamaño (incluye todas las variantes)
     const totalSizeBytes = images.reduce((sum, img) => sum + img.size, 0);
-    const totalSize = formatBytes(totalSizeBytes);
 
-    // Por carpeta
-    const byFolder = {};
+    // Por carpeta con tamaños
+    const folders = {};
     originals.forEach((img) => {
-      byFolder[img.folder] = (byFolder[img.folder] || 0) + 1;
+      if (!folders[img.folder]) {
+        folders[img.folder] = { count: 0, size: 0 };
+      }
+      folders[img.folder].count += 1;
+    });
+
+    // Calcular tamaño por carpeta (incluye todas las variantes)
+    images.forEach((img) => {
+      if (folders[img.folder]) {
+        folders[img.folder].size += img.size;
+      }
     });
 
     // Este mes
@@ -211,35 +278,11 @@ export const getStats = async () => {
 
     return {
       totalImages,
-      totalSize,
-      totalSizeBytes,
-      byFolder,
+      totalSize: totalSizeBytes, // Devolver como número, no string
+      folders,
       thisMonth,
-      diskUsage: {
-        used: totalSize,
-        available: 'N/A', // Requiere librería adicional para obtener espacio en disco
-        percentage: 0,
-      },
     };
   } catch (err) {
     throw new Error(`Error al obtener estadísticas: ${err.message}`);
   }
-};
-
-/**
- * Formatea bytes a formato legible
- * @param {number} bytes - Bytes
- * @param {number} decimals - Decimales
- * @returns {string} Formato legible (ej: "1.5 MB")
- */
-const formatBytes = (bytes, decimals = 2) => {
-  if (bytes === 0) return '0 B';
-
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };

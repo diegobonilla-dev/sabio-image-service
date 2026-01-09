@@ -66,6 +66,17 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // HTTP logger (Morgan → Winston)
 app.use(httpLogger);
 
+// Root endpoint (debe estar ANTES de static files)
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'SaBio Image Service',
+    version: '1.0.0',
+    status: 'running',
+    docs: 'https://github.com/diegobonilla-dev/sabio-image-service',
+  });
+});
+
 // Static files - Dashboard futuro
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -90,17 +101,6 @@ app.use('/upload', uploadRoutes);
 app.use('/optimize', optimizeRoutes);
 app.use('/api/images', imagesRoutes);
 app.use('/api/stats', statsRoutes);
-
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: 'SaBio Image Service',
-    version: '1.0.0',
-    status: 'running',
-    docs: 'https://github.com/tuusuario/sabio-crm-fs/tree/main/image-service',
-  });
-});
 
 // 404 handler
 app.use(notFoundHandler);
